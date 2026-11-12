@@ -5,7 +5,7 @@ Bedrock model / inference-profile ID) to the agent. Everything goes through the
 Bedrock Converse API, so the agent code is identical for every model.
 
 Check which models are enabled in your account/region with:
-    aws bedrock list-foundation-models --region us-west-2 \
+    aws bedrock list-foundation-models --region eu-north-1 \
         --query "modelSummaries[?contains(modelId,'qwen') || contains(modelId,'gpt')].modelId"
 """
 
@@ -22,7 +22,7 @@ MODELS: dict[str, str] = {
 }
 
 DEFAULT_MODEL = os.environ.get("SQL_AGENT_MODEL", "qwen")
-DEFAULT_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-west-2"
+DEFAULT_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "eu-north-1"
 
 
 def resolve_model_id(name: str) -> str:

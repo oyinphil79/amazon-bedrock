@@ -69,7 +69,7 @@ def _print_result(result) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sql_agent", description="Agentic text-to-SQL on Amazon Bedrock")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help="SQLite database path (default: sample.db)")
-    parser.add_argument("--region", default=None, help="AWS region (default: $AWS_REGION or us-west-2)")
+    parser.add_argument("--region", default=None, help="AWS region (default: $AWS_REGION or eu-north-1)")
     parser.add_argument("-q", "--quiet", action="store_true", help="Hide the agent's tool calls")
     sub = parser.add_subparsers(dest="command", required=True)
 

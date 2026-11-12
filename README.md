@@ -38,9 +38,9 @@ regions ─< employees ─< customers ─< orders ─< order_items >─ products
 ## Setup
 
 1. **Enable model access.** In the Bedrock console go to *Model access* and enable the Qwen3
-   and OpenAI gpt-oss models in your region. `us-west-2` is the default here. Confirm the exact IDs:
+   and OpenAI gpt-oss models in your region. `eu-north-1` is the default here. Confirm the exact IDs:
    ```bash
-   aws bedrock list-foundation-models --region us-west-2 --query "modelSummaries[?contains(modelId,'qwen') || contains(modelId,'gpt-oss')].modelId"
+   aws bedrock list-foundation-models --region eu-north-1 --query "modelSummaries[?contains(modelId,'qwen') || contains(modelId,'gpt-oss')].modelId"
    ```
    If your IDs differ, edit `MODELS` in `sql_agent/config.py`. You can also pass any Bedrock model ID
    or inference profile directly with `--model`.
