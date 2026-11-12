@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeQwenAndGptOss",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": [
+        "arn:aws:bedrock:eu-north-1::foundation-model/qwen.*",
+        "arn:aws:bedrock:eu-north-1::foundation-model/openai.*"
+      ]
+    }
+  ]
+}

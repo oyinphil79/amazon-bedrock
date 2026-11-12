@@ -22,7 +22,9 @@ MODELS: dict[str, str] = {
 }
 
 DEFAULT_MODEL = os.environ.get("SQL_AGENT_MODEL", "qwen")
-DEFAULT_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "eu-north-1"
+# BEDROCK_REGION wins so the app can run in one region (e.g. App Runner in eu-west-1,
+# which sets AWS_REGION itself) while calling Bedrock in another.
+DEFAULT_REGION = os.environ.get("BEDROCK_REGION") or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "eu-north-1"
 
 
 def resolve_model_id(name: str) -> str:

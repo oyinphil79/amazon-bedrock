@@ -16,6 +16,28 @@ user question ─▶ model on Bedrock ──toolUse──▶ list_tables / descr
                  stopReason = end_turn ─▶ natural-language answer
 ```
 
+## Chat UI (run locally)
+
+![Chat UI](docs/screenshot.png)
+
+A web chat that shows each SQL step as it runs, with a model menu to switch between Qwen and GPT.
+
+**Windows PowerShell:**
+```powershell
+python -m pip install -r requirements.txt
+```
+```powershell
+$env:AWS_BEARER_TOKEN_BEDROCK = "bedrock-api-key-...your key..."
+```
+```powershell
+python -m uvicorn sql_agent.web:app --port 8000
+```
+**Mac/Linux:** the same commands, but set the key with `export AWS_BEARER_TOKEN_BEDROCK="..."`.
+
+Open **http://localhost:8000**. Press Ctrl+C in the terminal to stop the server.
+
+**Deploy to production:** see [deploy/DEPLOY.md](deploy/DEPLOY.md). It covers Docker, Amazon ECR and App Runner, using an IAM role so no API key is needed, plus a login and a production checklist.
+
 ## Project layout
 
 | File | Purpose |
@@ -25,6 +47,8 @@ user question ─▶ model on Bedrock ──toolUse──▶ list_tables / descr
 | `sql_agent/tools.py` | Tool definitions (`toolSpec`) and dispatcher |
 | `sql_agent/database.py` | Sample DB generator + read-only, single-statement, row-limited query layer |
 | `sql_agent/cli.py` | `ask`, `compare`, `demo`, `chat` commands |
+| `sql_agent/web.py`, `sql_agent/static/index.html` | Web chat UI (FastAPI, streams agent steps) |
+| `Dockerfile`, `deploy/` | Container image, IAM policies and the AWS deployment guide |
 | `tests/` | Offline tests using a fake Bedrock client |
 
 ## Sample database
@@ -44,8 +68,9 @@ regions ─< employees ─< customers ─< orders ─< order_items >─ products
    ```
    If your IDs differ, edit `MODELS` in `sql_agent/config.py`. You can also pass any Bedrock model ID
    or inference profile directly with `--model`.
-2. **Credentials.** Any standard boto3 credentials (`aws configure`, SSO, env vars, IAM role).
-   They need `bedrock:InvokeModel` on the models you use.
+2. **Credentials.** Either a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK`, or any standard boto3
+   credentials (`aws configure`, SSO, or an IAM role in production). They need `bedrock:InvokeModel`.
+   Set `BEDROCK_REGION` (or `AWS_REGION`) to change the region.
 3. **Install:**
    ```bash
    python -m venv .venv && source .venv/bin/activate

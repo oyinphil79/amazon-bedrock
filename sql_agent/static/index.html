@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQL Agent</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --border: #e3e2dc;
+    --accent: #c4552b; --accent-text: #ffffff; --user: #efeee8; --code: #f2f1ec;
+    --ok: #2f7d4f; --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1b19; --panel: #242422; --text: #ecebe6; --muted: #a2a19a; --border: #3a3936;
+      --accent: #e0754b; --accent-text: #1b1b19; --user: #2f2e2b; --code: #2b2a27;
+      --ok: #6cc28f; --err: #f2867d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 16px; margin: 0 auto 0 0; font-weight: 600; }
+  header .meta { color: var(--muted); font-size: 13px; }
+  select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  main { flex: 1; overflow-y: auto; }
+  #messages { max-width: 860px; margin: 0 auto; padding: 20px 16px 8px; }
+  .msg { margin: 0 0 18px; }
+  .msg.user .bubble { background: var(--user); border-radius: 12px; padding: 10px 14px; margin-left: auto; max-width: 85%; width: fit-content; white-space: pre-wrap; }
+  .msg.bot .bubble { overflow-x: auto; }
+  .bubble table { border-collapse: collapse; margin: 8px 0; }
+  .bubble th, .bubble td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; }
+  .bubble code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  details.steps { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); margin-bottom: 8px; }
+  details.steps summary { cursor: pointer; padding: 8px 12px; color: var(--muted); font-size: 13px; }
+  .step { border-top: 1px solid var(--border); padding: 8px 12px; font-size: 13px; }
+  .step .label { font-weight: 600; margin-bottom: 4px; }
+  .step pre { background: var(--code); border-radius: 6px; padding: 8px; margin: 4px 0 0; overflow: auto; max-height: 220px; white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  .stats { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .error { color: var(--err); white-space: pre-wrap; }
+  .thinking { color: var(--muted); font-style: italic; }
+  #examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #examples button { font-size: 13px; text-align: left; }
+  .intro { color: var(--muted); }
+  footer { border-top: 1px solid var(--border); background: var(--panel); padding: 12px 16px; }
+  form { max-width: 860px; margin: 0 auto; display: flex; gap: 8px; }
+  textarea { flex: 1; min-width: 0; resize: none; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; height: 48px; max-height: 160px; }
+  #send { background: var(--accent); color: var(--accent-text); border: none; padding: 0 18px; font-weight: 600; }
+  #send:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🗄️ SQL Agent on Amazon Bedrock</h1>
+  <label class="meta">Model <select id="model"></select></label>
+  <button id="reset" title="Start a new conversation">New chat</button>
+</header>
+<main>
+  <div id="messages">
+    <div class="msg bot intro" id="intro">
+      Ask a question about the database in plain English. The agent will explore the schema, write SQL,
+      run it, and answer. Switch between Qwen and GPT with the model menu.
+      <div id="examples"></div>
+    </div>
+  </div>
+</main>
+<footer>
+  <form id="form">
+    <textarea id="input" placeholder="e.g. Which sales rep generated the most revenue?" autofocus></textarea>
+    <button id="send" type="submit">Send</button>
+  </form>
+</footer>
+<script>
+const EXAMPLES = [
+  "How many customers are in each segment?",
+  "Top 5 customers by number of orders",
+  "Total revenue per product category",
+  "Which sales rep generated the most revenue from delivered orders, and in which region?",
+  "For each region, what is the top-selling top-level category by revenue?",
+];
+const $ = (id) => document.getElementById(id);
+let sessionId = newId();
+let busy = false;
+
+function newId() { return (crypto.randomUUID ? crypto.randomUUID() : String(Math.random())).replace(/-/g, ""); }
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+// Minimal, dependency-free Markdown renderer. Everything is HTML-escaped first, so model output can't inject markup.
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+}
+function md(src) {
+  const lines = src.replace(/\r/g, "").split("\n"), out = [];
+  const cells = (l) => l.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+  for (let i = 0; i < lines.length; ) {
+    const l = lines[i];
+    if (/^```/.test(l)) {
+      const code = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      i++; out.push(`<pre>${esc(code.join("\n"))}</pre>`);
+    } else if (/^\s*\|.*\|\s*$/.test(l) && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1] || "")) {
+      const head = cells(l); i += 2; const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push(`<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>` +
+        rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("") + "</tbody></table>");
+    } else if (/^#{1,4}\s/.test(l)) {
+      out.push(`<p><strong>${inline(l.replace(/^#+\s*/, ""))}</strong></p>`); i++;
+    } else if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l), items = [];
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, ""));
+      const tag = ordered ? "ol" : "ul";
+      out.push(`<${tag}>${items.map(t => `<li>${inline(t)}</li>`).join("")}</${tag}>`);
+    } else if (!l.trim()) { i++; }
+    else {
+      const para = [];
+      while (i < lines.length && lines[i].trim() && !/^(```|#{1,4}\s|\s*([-*]|\d+\.)\s|\s*\|)/.test(lines[i])) para.push(lines[i++]);
+      if (!para.length) para.push(lines[i++]);
+      out.push(`<p>${para.map(inline).join("<br>")}</p>`);
+    }
+  }
+  return out.join("");
+}
+function scroll() { const m = document.querySelector("main"); m.scrollTop = m.scrollHeight; }
+
+async function init() {
+  const cfg = await fetch("/api/config").then(r => r.json());
+  let saved = null;
+  try { saved = localStorage.getItem("sqlagent.model"); } catch {}
+  for (const m of cfg.models) {
+    const o = new Option(`${m.alias} — ${m.model_id}`, m.alias);
+    $("model").add(o);
+  }
+  $("model").value = cfg.models.some(m => m.alias === saved) ? saved : cfg.default_model;
+  for (const q of EXAMPLES) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = q; b.onclick = () => send(q);
+    $("examples").append(b);
+  }
+}
+
+$("model").onchange = () => {
+  try { localStorage.setItem("sqlagent.model", $("model").value); } catch {}
+  addNote(`Switched to ${$("model").value}. The next question starts a new conversation.`);
+};
+$("reset").onclick = () => {
+  fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sessionId }) });
+  sessionId = newId();
+  document.querySelectorAll(".msg:not(#intro)").forEach(e => e.remove());
+};
+$("form").onsubmit = (e) => { e.preventDefault(); send($("input").value); };
+$("input").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("input").value); } };
+
+function addNote(text) {
+  const d = document.createElement("div");
+  d.className = "msg bot stats"; d.textContent = text;
+  $("messages").append(d); scroll();
+}
+
+async function send(text) {
+  text = text.trim();
+  if (!text || busy) return;
+  busy = true; $("send").disabled = true; $("input").value = "";
+
+  const u = document.createElement("div");
+  u.className = "msg user"; u.innerHTML = `<div class="bubble">${esc(text)}</div>`;
+  const b = document.createElement("div");
+  b.className = "msg bot";
+  b.innerHTML = `<details class="steps"><summary>Working…</summary></details><div class="bubble thinking">Thinking…</div><div class="stats"></div>`;
+  $("messages").append(u, b); scroll();
+  const steps = b.querySelector("details"), summary = steps.querySelector("summary");
+  const bubble = b.querySelector(".bubble"), stats = b.querySelector(".stats");
+  let nSteps = 0;
+
+  function addStep(html) {
+    const s = document.createElement("div"); s.className = "step"; s.innerHTML = html;
+    steps.append(s); nSteps++; summary.textContent = `Agent steps (${nSteps})`; scroll();
+  }
+
+  function handle(ev) {
+    if (ev.type === "thought") addStep(`<div class="label">💭 Reasoning</div>${esc(ev.text)}`);
+    else if (ev.type === "tool_call") {
+      const body = ev.name === "run_sql" ? ev.input.sql : JSON.stringify(ev.input);
+      addStep(`<div class="label">🛠 ${esc(ev.name)}</div><pre>${esc(body || "")}</pre>`);
+    } else if (ev.type === "tool_result") {
+      addStep(`<div class="label ${ev.is_error ? "err" : "ok"}">${ev.is_error ? "❌ Error" : "✅ Result"}</div><pre>${esc(ev.output)}</pre>`);
+    } else if (ev.type === "answer") {
+      bubble.className = "bubble"; bubble.innerHTML = md(ev.text);
+    } else if (ev.type === "error") {
+      bubble.className = "bubble error"; bubble.textContent = ev.message;
+    } else if (ev.type === "done") {
+      stats.textContent = `${ev.model_id} · ${ev.steps} steps · ${ev.sql_queries} SQL queries · ${ev.input_tokens}/${ev.output_tokens} tokens in/out`;
+    }
+    scroll();
+  }
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, model: $("model").value, session_id: sessionId }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        if (line.trim()) handle(JSON.parse(line));
+      }
+    }
+  } catch (err) {
+    bubble.className = "bubble error"; bubble.textContent = String(err.message || err);
+  } finally {
+    if (!nSteps) steps.remove(); else summary.textContent = `Agent steps (${nSteps})`;
+    busy = false; $("send").disabled = false; $("input").focus();
+  }
+}
+
+init();
+</script>
+</body>
+</html>
